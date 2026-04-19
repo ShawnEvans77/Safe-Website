@@ -120,10 +120,24 @@ function getRiskConfig(risk: string) {
 async function readApiError(res: Response) {
   try {
     const data = await res.json();
-    return data.detail ?? `Safe API returned ${res.status}.`;
+    const detail = data.detail;
+    if (typeof detail === "string") return detail;
+    if (detail?.message && typeof detail.message === "string") return detail.message;
+    return `Safe API returned ${res.status}.`;
   } catch {
     return `Safe API returned ${res.status}.`;
   }
+}
+
+function speakWithBrowserVoice(text: string) {
+  if (!("speechSynthesis" in window)) return false;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.92;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+  return true;
 }
 
 function normalizeApiError(error: unknown) {
@@ -192,7 +206,12 @@ const stopListening = useCallback(() => {
         body: JSON.stringify({ text }),
       });
       if (!res.ok) {
-        throw new Error(await readApiError(res));
+        const message = await readApiError(res);
+        if (res.status === 403 && speakWithBrowserVoice(text)) {
+          setApiError(`${message} Using browser voice fallback for now.`);
+          return;
+        }
+        throw new Error(message);
       }
 
       const blob = await res.blob();

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from groq_client import get_followup_response, get_response, get_session_summary
 from rag_pipeline import DOCS_DIR, build_index, retrieve
 from tavily_search import search_web
-from voice_output import speak
+from voice_output import VoiceUnavailableError, speak
 
 index_ready = False
 index_error = ""
@@ -262,6 +262,8 @@ async def get_voice(req: VoiceRequest):
 
     try:
         audio = speak(text)
+    except VoiceUnavailableError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
