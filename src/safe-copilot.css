@@ -411,7 +411,9 @@
 }
 
 /* ── Answer ── */
-.answer-card { min-height: 100px; }
+.answer-card {
+  min-height: 220px;
+}
 
 .answer-text {
   font-size: 0.86rem;

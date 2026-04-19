@@ -496,7 +496,7 @@ const stopListening = useCallback(() => {
 
           {guidance && (
             <div className="card">
-              <div className="card-label">NEXT STEPS — TAP TO ASK SAFE</div>
+              <div className="card-label">ASK SAFE PROMPTS</div>
               <div className="bubble-row">
                 {guidance.nextSteps.map((step) => (
                   <button
@@ -512,33 +512,14 @@ const stopListening = useCallback(() => {
           )}
         </div>
 
-        {/* ── COL 3: Questions + Answer + Notes ── */}
+        {/* ── COL 3: Answer ── */}
         <div className="col col-right">
-          {guidance && (
-            <div className="card">
-              <div className="card-label">QUICK ACTIONS</div>
-              <p className="tap-hint">Tap a question — Safe answers instantly</p>
-              <div className="q-chip-list">
-                {guidance.questions.map((q) => (
-                  <button
-                    key={q}
-                    className="q-chip"
-                    onClick={() => handleClickSuggestion(q)}
-                  >
-                    <span className="q-dot">●</span>
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="card answer-card">
             <div className="card-label">SAFE'S ANSWER</div>
             {followupA ? (
               <p className="answer-text">{followupA}</p>
             ) : (
-              <p className="placeholder-text">Answers will appear here when you tap a question or ask your own.</p>
+              <p className="placeholder-text">Counselor guidance will appear here when you tap an Ask Safe prompt or ask your own question.</p>
             )}
           </div>
 
