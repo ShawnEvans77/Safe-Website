@@ -32,13 +32,18 @@ Required JSON shape:
   "phrase": "exact phrase the counselor can say right now — warm, human, natural",
   "risk": "Low | Medium | High",
   "reason": "one sentence explaining the risk level",
-  "nextSteps": ["short action phrase", "short action phrase", "short action phrase"],
+  "nextSteps": ["prompt to ask Safe", "prompt to ask Safe", "prompt to ask Safe"],
   "questions": ["question to ask the caller", "question to ask the caller", "question to ask the caller"]
 }
 
 Rules:
 - Base your response only on the context provided.
 - If the context is insufficient, make the phrase a safe clarifying question.
+- The phrase field is caller-facing. It should be an exact sentence the counselor can say to the caller.
+- The nextSteps field is counselor-facing. Each item should be a short prompt for the Ask Safe box.
+- Start each nextSteps item with a verb like Ask, Check, Assess, Explore, Clarify, or Validate.
+- Refer to the caller as "the caller" in nextSteps, not "you".
+- Good nextSteps examples: "Ask about caller stressors", "Check immediate safety", "Explore recent symptoms".
 - Every string must be normal readable English.
 - Never output binary, escaped control characters, or corrupted text."""
 
@@ -73,7 +78,13 @@ def get_followup_response(question: str, situation: str, previous_guidance: str)
                 "role": "system",
                 "content": (
                     "You are Safe — a clinical assistant for crisis counselors. "
-                    "Answer concisely in under 4 sentences. End with one suggested phrase."
+                    "You are advising the counselor, not speaking to the caller. "
+                    "Refer to the caller with they/them or as 'the caller'. "
+                    "Never use 'you' to mean the caller. "
+                    "Answer in 2-4 concise sentences. "
+                    "Give practical guidance, then include one exact line the counselor can use. "
+                    "Introduce that line with 'Try asking them:' or 'Tell the caller:'. "
+                    "Do not diagnose."
                 ),
             },
             {
