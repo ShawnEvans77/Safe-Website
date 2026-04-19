@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 /* ── CSS Variables (default theme) ── */
-:root {
+.safe-shell {
   --bg: #1a1040;
   --bg2: #120b30;
   --card: rgba(255,255,255,0.06);
@@ -292,9 +292,6 @@
   border: 1.5px solid rgba(34,197,94,0.4);
   color: #86efac;
 }
-
-/* ── Phrase Card ── */
-.phrase-card-wrap { }
 
 .rag-pill {
   display: inline-block;

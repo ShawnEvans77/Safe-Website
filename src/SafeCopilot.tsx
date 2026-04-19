@@ -1,24 +1,17 @@
 import { useState, useRef, useCallback } from "react";
 import "./safe-copilot.css";
 
-const SAMPLE_GUIDANCE = {
-  technique: "Active Listening",
-  phrase:
-    "I'm here to listen and help you understand what's been going on with your body, can you tell me more about these symptoms?",
-  risk: "Medium",
-  reason:
-    "The caller's symptoms could be related to a medical condition, such as a viral or bacterial infection, or possibly a more serious condition like meningitis, but more information is needed to determine the level of risk.",
-  nextSteps: [
-    "Explore medical history",
-    "Assess symptom severity",
-    "Check for support system",
-  ],
-  questions: [
-    "Can you tell me more about when these symptoms started and how they've been affecting you?",
-    "Have you experienced any other symptoms, such as a runny nose, cough, or fever, along with the headache and sore throat?",
-    "Have you seen a doctor or received any medical treatment for these symptoms, or is this your first time reaching out for help?",
-  ],
-};
+const SAFE_API_BASE_URL =
+  import.meta.env.VITE_SAFE_API_URL ?? "http://localhost:8000";
+
+type GuidanceData = {
+  technique: string;
+  phrase: string;
+  risk: string;
+  reason: string;
+  nextSteps: string[];
+  questions: string[];
+} | null;
 
 const THEMES = [
   { name: "default", dot: "#a855f7" },
@@ -94,8 +87,6 @@ const THEME_VARS: Record<string, Record<string, string>> = {
   },
 };
 
-type GuidanceData = typeof SAMPLE_GUIDANCE | null;
-
 type SpeechRecognitionEventLike = {
   results: ArrayLike<{
     0: {
@@ -120,27 +111,41 @@ type SpeechRecognitionWindow = Window &
   Partial<Record<"SpeechRecognition" | "webkitSpeechRecognition", SpeechRecognitionConstructor>>;
 
 function getRiskConfig(risk: string) {
-  if (risk === "High") return { cls: "risk-high", icon: "🚨", label: "HIGH RISK — Escalate immediately" };
-  if (risk === "Medium") return { cls: "risk-medium", icon: "⚠️", label: "MEDIUM RISK — Monitor closely" };
+  const normalizedRisk = risk.toLowerCase();
+  if (normalizedRisk.includes("high")) return { cls: "risk-high", icon: "🚨", label: "HIGH RISK — Escalate immediately" };
+  if (normalizedRisk.includes("medium")) return { cls: "risk-medium", icon: "⚠️", label: "MEDIUM RISK — Monitor closely" };
   return { cls: "risk-low", icon: "✓", label: "LOW RISK" };
 }
 
+async function readApiError(res: Response) {
+  try {
+    const data = await res.json();
+    return data.detail ?? `Safe API returned ${res.status}.`;
+  } catch {
+    return `Safe API returned ${res.status}.`;
+  }
+}
+
+function normalizeApiError(error: unknown) {
+  if (error instanceof TypeError && error.message === "Failed to fetch") {
+    return `Safe API is not reachable at ${SAFE_API_BASE_URL}. Start the backend with: cd backend; python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000`;
+  }
+
+  return error instanceof Error ? error.message : "Error connecting to Safe API.";
+}
+
 export function SafeCopilot() {
-  const [situation, setSituation] = useState(
-    "What is happening on this call?\n\ndays. It started with this dull headache that just wouldn't go away. Yesterday I noticed I was getting tired way faster than usual, even just walking up the stairs. Today I woke up with a sore throat and this weird pressure behind my eyes."
-  );
-  const [guidance, setGuidance] = useState<GuidanceData>(SAMPLE_GUIDANCE);
+  const [situation, setSituation] = useState("");
+  const [guidance, setGuidance] = useState<GuidanceData>(null);
   const [loading, setLoading] = useState(false);
   const [followupQ, setFollowupQ] = useState("");
-  const [followupA, setFollowupA] = useState(
-    "To further assess the caller's risk level, I would suggest asking about the caller's medical history, any prior diagnoses, and current medications. I would also recommend asking about the caller's support system and whether they have a primary care physician they can contact. Suggested phrase: \"Let's take a moment to understand your health better. Have you experienced these symptoms before, and do you have a doctor you usually see?\""
-  );
-  const [sessionSummary, setSessionSummary] = useState(
-    "CALLER SUMMARY: The caller has been experiencing a dull headache, fatigue, sore throat, and pressure behind the eyes for the past three days, with symptoms worsening over time.\n\nINTERVENTION USED: Active Listening, using open-ended questions to gather more information about the caller's symptoms and medical history.\n\nRISK ASSESSMENT: Medium, due to the potential for underlying medical conditions such as viral or bacterial infection.\n\nCOUNSELOR ACTIONS: Gathered information about the caller's symptoms, onset, and progression.\n\nFOLLOW-UP NEEDED: Yes\n\nREFERRALS SUGGESTED: Primary care physician, urgent care if symptoms worsen."
-  );
+  const [followupA, setFollowupA] = useState("");
+  const [sessionSummary, setSessionSummary] = useState("");
+  const [apiError, setApiError] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [activeTheme, setActiveTheme] = useState(0);
   const [hintVisible, setHintVisible] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
   
   const [listening, setListening] = useState(false);
@@ -178,33 +183,56 @@ const stopListening = useCallback(() => {
   setListening(false);
 }, []);
   
-  const speakPhrase = useCallback((text: string) => {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
+  const speakPhrase = useCallback(async (text: string) => {
+    setApiError("");
+    try {
+      const res = await fetch(`${SAFE_API_BASE_URL}/voice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        throw new Error(await readApiError(res));
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch (e) {
+      setApiError(normalizeApiError(e));
+    }
   }, []);
 
   const applyTheme = useCallback((idx: number) => {
     setActiveTheme(idx);
     const vars = THEME_VARS[THEMES[idx].name];
-    const root = document.documentElement;
-    Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
+    const shell = shellRef.current;
+    Object.entries(vars).forEach(([k, v]) => shell?.style.setProperty(k, v));
   }, []);
+
   const handleGetGuidance = useCallback(async () => {
     if (!situation.trim()) return;
     setLoading(true);
+    setApiError("");
+    setGuidance(null);
+    setFollowupA("");
+    setSessionSummary("");
     try {
-      const res = await fetch("http://localhost:8000/guidance", {
+      const res = await fetch(`${SAFE_API_BASE_URL}/guidance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ situation })
       });
+      if (!res.ok) {
+        throw new Error(await readApiError(res));
+      }
       const data = await res.json();
       setGuidance(data);
     } catch (e) {
       console.error(e);
+      setApiError(normalizeApiError(e));
     }
     setLoading(false);
   }, [situation]);
@@ -218,9 +246,10 @@ const stopListening = useCallback(() => {
   
   const handleAsk = useCallback(async () => {
     if (!followupQ.trim()) return;
+    setApiError("");
     setFollowupA("Thinking...");
     try {
-      const res = await fetch("http://localhost:8000/followup", {
+      const res = await fetch(`${SAFE_API_BASE_URL}/followup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -229,18 +258,23 @@ const stopListening = useCallback(() => {
           previous_guidance: guidance?.phrase ?? ""
         })
       });
+      if (!res.ok) {
+        throw new Error(await readApiError(res));
+      }
       const data = await res.json();
       setFollowupA(data.answer);
-    } catch {
-      setFollowupA("Error connecting to Safe API.");
+    } catch (e) {
+      setApiError(normalizeApiError(e));
+      setFollowupA("");
     }
   }, [followupQ, situation, guidance]);
   
   const handleSummary = useCallback(async () => {
     if (!guidance) return;
     setSummaryLoading(true);
+    setApiError("");
     try {
-      const res = await fetch("http://localhost:8000/summary", {
+      const res = await fetch(`${SAFE_API_BASE_URL}/summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -249,10 +283,14 @@ const stopListening = useCallback(() => {
           followups: followupA
         })
       });
+      if (!res.ok) {
+        throw new Error(await readApiError(res));
+      }
       const data = await res.json();
       setSessionSummary(data.summary);
-    } catch {
-      setSessionSummary("Error generating summary.");
+    } catch (e) {
+      setApiError(normalizeApiError(e));
+      setSessionSummary("");
     }
     setSummaryLoading(false);
   }, [guidance, situation, followupA]);
@@ -260,7 +298,7 @@ const stopListening = useCallback(() => {
   const riskConfig = guidance ? getRiskConfig(guidance.risk) : null;
 
   return (
-    <div className="safe-shell">
+    <div className="safe-shell" ref={shellRef}>
       <div style={{
   background: 'rgba(239,68,68,0.15)',
   border: '1px solid rgba(239,68,68,0.3)',
@@ -320,7 +358,8 @@ const stopListening = useCallback(() => {
           <div className="card">
             <div className="card-label">CALLER SITUATION</div>
             <textarea
-              className="safe-textarea highlight-input"
+              className="safe-textarea"
+              placeholder="Describe what is happening on this call..."
               value={situation}
               onChange={(e) => setSituation(e.target.value)}
               rows={7}
@@ -384,6 +423,12 @@ const stopListening = useCallback(() => {
 
         {/* ── COL 2: Guidance ── */}
         <div className="col col-guidance">
+          {apiError && (
+            <div className="risk-banner risk-high">
+              {apiError}
+            </div>
+          )}
+
           {riskConfig && (
             <div className={`risk-banner ${riskConfig.cls}`}>
               {riskConfig.icon} {riskConfig.label}
@@ -392,28 +437,32 @@ const stopListening = useCallback(() => {
 
           <div className="card phrase-card-wrap">
             <div className="phrase-label">● RECOMMENDED RESPONSE</div>
-            <blockquote className="phrase-quote">
-  "{guidance?.phrase ?? "Enter a situation and click Get Guidance to begin."}"
-  {guidance?.phrase && (
-    <button
-      onClick={() => speakPhrase(guidance.phrase)}
-      style={{
-        marginLeft: '10px',
-        background: 'rgba(167,139,250,0.2)',
-        border: '1px solid rgba(167,139,250,0.4)',
-        borderRadius: '50%',
-        width: '32px',
-        height: '32px',
-        cursor: 'pointer',
-        fontSize: '16px',
-        verticalAlign: 'middle',
-      }}
-      title="Read aloud"
-    >
-      🔊
-    </button>
-  )}
-</blockquote>
+            {guidance ? (
+              <blockquote className="phrase-quote">
+                "{guidance.phrase}"
+                <button
+                  onClick={() => speakPhrase(guidance.phrase)}
+                  style={{
+                    marginLeft: '10px',
+                    background: 'rgba(167,139,250,0.2)',
+                    border: '1px solid rgba(167,139,250,0.4)',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    verticalAlign: 'middle',
+                  }}
+                  title="Read aloud"
+                >
+                  🔊
+                </button>
+              </blockquote>
+            ) : (
+              <p className="placeholder-text">
+                Enter a caller situation and get guidance to generate a response.
+              </p>
+            )}
             {guidance && (
               <>
                 <div className="meta-line">

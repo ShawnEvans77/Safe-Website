@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic
+groq
+llama-index
+llama-index-embeddings-huggingface
+tavily-python
+elevenlabs
+faiss-cpu
+sentence-transformers
+gradio
+boto3
+python-dotenv
+pypdf
