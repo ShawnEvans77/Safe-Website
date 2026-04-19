@@ -4,9 +4,9 @@ from typing import List, Optional, Tuple
 import faiss
 import numpy as np
 from dotenv import load_dotenv
+from fastembed import TextEmbedding
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
-from sentence_transformers import SentenceTransformer
 
 BASE_DIR = Path(__file__).resolve().parent
 DOCS_DIR = BASE_DIR / "docs"
@@ -16,9 +16,7 @@ load_dotenv(BASE_DIR / ".env")
 FaissIndex = faiss.IndexFlatL2
 EmbeddingArray = np.ndarray
 
-embedder: SentenceTransformer = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
+embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
 chunk_texts: List[str] = []
 faiss_index: Optional[FaissIndex] = None
@@ -43,8 +41,7 @@ def build_index(docs_folder: str | Path = DOCS_DIR) -> Tuple[FaissIndex, List[st
 
     chunk_texts = texts
 
-    embeddings: EmbeddingArray = embedder.encode(texts, show_progress_bar=True)
-    embeddings = np.asarray(embeddings, dtype=np.float32)
+    embeddings = np.asarray(list(embedder.embed(texts)), dtype=np.float32)
 
     dimension = embeddings.shape[1]
     index = faiss.IndexFlatL2(dimension)
@@ -62,8 +59,7 @@ def retrieve(query: str, top_k: int = 3) -> List[str]:
 
     assert faiss_index is not None
 
-    query_embedding: EmbeddingArray = embedder.encode([query])
-    query_embedding = np.asarray(query_embedding, dtype=np.float32)
+    query_embedding = np.asarray(list(embedder.embed([query])), dtype=np.float32)
 
     _, indices = faiss_index.search(query_embedding, top_k)
 

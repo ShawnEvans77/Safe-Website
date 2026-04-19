@@ -3,12 +3,10 @@ uvicorn[standard]
 pydantic
 groq
 llama-index
-llama-index-embeddings-huggingface
+llama-index-embeddings-fastembed
 tavily-python
 elevenlabs
 faiss-cpu
-sentence-transformers
-gradio
-boto3
+fastembed
 python-dotenv
 pypdf
