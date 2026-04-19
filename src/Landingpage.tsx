@@ -1,9 +1,6 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import "./Landing.css";
-
-interface LandingPageProps {
-  onLaunch: () => void;
-}
 
 const details = [
   {
@@ -59,8 +56,11 @@ const scenarios = [
   },
 ];
 
-export function LandingPage({ onLaunch }: LandingPageProps) {
+export function LandingPage() {
   const landingRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  const openChat = () => navigate("/chat");
 
   useEffect(() => {
     const animatedItems =
@@ -104,7 +104,7 @@ export function LandingPage({ onLaunch }: LandingPageProps) {
           </div>
         </div>
 
-        <button className="landing__nav-button" onClick={onLaunch}>
+        <button className="landing__nav-button" onClick={openChat}>
           Launch
         </button>
       </header>
@@ -132,7 +132,7 @@ export function LandingPage({ onLaunch }: LandingPageProps) {
               </p>
 
               <div className="hero__actions">
-                <button className="hero__primary" onClick={onLaunch}>
+                <button className="hero__primary" onClick={openChat}>
                   Open Safe
                 </button>
                 <span className="hero__meta">Live demo · No setup</span>

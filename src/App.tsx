@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { LandingPage } from "./Landingpage";
 import { SafeCopilot } from "./SafeCopilot";
 
 export default function App() {
-  const [launched, setLaunched] = useState(false);
-
-  if (launched) {
-    return <SafeCopilot />;
-  }
-
-  return <LandingPage onLaunch={() => setLaunched(true)} />;
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/chat" element={<SafeCopilot />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
