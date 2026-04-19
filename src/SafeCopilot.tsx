@@ -119,6 +119,47 @@ export function SafeCopilot() {
   const [activeTheme, setActiveTheme] = useState(0);
   const [hintVisible, setHintVisible] = useState(false);
   const questionRef = useRef<HTMLTextAreaElement>(null);
+  
+  const [listening, setListening] = useState(false);
+const recognitionRef = useRef<any>(null);
+
+const startListening = useCallback(() => {
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Speech recognition not supported in this browser. Use Chrome!");
+    return;
+  }
+  const recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event: any) => {
+    let transcript = '';
+    for (let i = 0; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+    setSituation(transcript);
+  };
+
+  recognition.onend = () => setListening(false);
+  recognitionRef.current = recognition;
+  recognition.start();
+  setListening(true);
+}, []);
+
+const stopListening = useCallback(() => {
+  recognitionRef.current?.stop();
+  setListening(false);
+}, []);
+  
+  const speakPhrase = useCallback((text: string) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  }, []);
 
   const applyTheme = useCallback((idx: number) => {
     setActiveTheme(idx);
@@ -126,12 +167,20 @@ export function SafeCopilot() {
     const root = document.documentElement;
     Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
   }, []);
-
   const handleGetGuidance = useCallback(async () => {
     if (!situation.trim()) return;
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1300));
-    setGuidance(SAMPLE_GUIDANCE);
+    try {
+      const res = await fetch("http://localhost:8000/guidance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ situation })
+      });
+      const data = await res.json();
+      setGuidance(data);
+    } catch (e) {
+      console.error(e);
+    }
     setLoading(false);
   }, [situation]);
 
@@ -141,30 +190,79 @@ export function SafeCopilot() {
     setTimeout(() => setHintVisible(false), 2500);
     questionRef.current?.focus();
   }, []);
-
+  
   const handleAsk = useCallback(async () => {
     if (!followupQ.trim()) return;
     setFollowupA("Thinking...");
-    await new Promise((r) => setTimeout(r, 900));
-    setFollowupA(
-      "To further assess the caller's risk level, I would suggest asking about the caller's medical history, any prior diagnoses, and current medications. Suggested phrase: \"Let's take a moment to understand your health better. Have you experienced these symptoms before, and do you have a doctor you usually see?\""
-    );
-  }, [followupQ]);
-
+    try {
+      const res = await fetch("http://localhost:8000/followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: followupQ,
+          situation,
+          previous_guidance: guidance?.phrase ?? ""
+        })
+      });
+      const data = await res.json();
+      setFollowupA(data.answer);
+    } catch (e) {
+      setFollowupA("Error connecting to Safe API.");
+    }
+  }, [followupQ, situation, guidance]);
+  
   const handleSummary = useCallback(async () => {
     if (!guidance) return;
     setSummaryLoading(true);
-    await new Promise((r) => setTimeout(r, 1100));
-    setSessionSummary(
-      "CALLER SUMMARY: The caller has been experiencing a dull headache, fatigue, sore throat, and pressure behind the eyes for the past three days, with symptoms worsening over time.\n\nINTERVENTION USED: Active Listening, using open-ended questions to gather more information about the caller's symptoms and medical history.\n\nRISK ASSESSMENT: Medium, due to the potential for underlying medical conditions such as viral or bacterial infection.\n\nCOUNSELOR ACTIONS: Gathered information about the caller's symptoms, onset, and progression.\n\nFOLLOW-UP NEEDED: Yes\n\nREFERRALS SUGGESTED: Primary care physician, urgent care if symptoms worsen."
-    );
+    try {
+      const res = await fetch("http://localhost:8000/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          situation,
+          guidance: guidance?.phrase ?? "",
+          followups: followupA
+        })
+      });
+      const data = await res.json();
+      setSessionSummary(data.summary);
+    } catch (e) {
+      setSessionSummary("Error generating summary.");
+    }
     setSummaryLoading(false);
-  }, [guidance]);
+  }, [guidance, situation, followupA]);
 
   const riskConfig = guidance ? getRiskConfig(guidance.risk) : null;
 
   return (
     <div className="safe-shell">
+      <div style={{
+  background: 'rgba(239,68,68,0.15)',
+  border: '1px solid rgba(239,68,68,0.3)',
+  borderRadius: '12px',
+  padding: '10px 20px',
+  margin: '0 0 12px 0',
+  display: 'flex',
+  gap: '24px',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+}}>
+  <span style={{fontSize:'0.7rem',fontWeight:800,letterSpacing:'2px',color:'#f87171'}}>
+    🆘 EMERGENCY LINES
+  </span>
+  <span style={{fontSize:'0.85rem',fontWeight:700,color:'#fca5a5'}}>
+    📞 988 — Suicide & Crisis Lifeline
+  </span>
+  <span style={{fontSize:'0.85rem',fontWeight:700,color:'#fca5a5'}}>
+    🚨 911 — Emergency Services
+  </span>
+  <span style={{fontSize:'0.85rem',fontWeight:700,color:'#fca5a5'}}>
+    💬 741741 — Crisis Text Line
+  </span>
+  <span style={{fontSize:'0.85rem',fontWeight:700,color:'#fca5a5'}}>
+    ☎️ 1-800-273-8255 — National Hotline
+  </span>
+</div>
       {/* HEADER */}
       <header className="safe-header">
         <div className="header-left">
@@ -209,6 +307,24 @@ export function SafeCopilot() {
             >
               {loading ? <><span className="spinner" /> Analyzing…</> : "Get Guidance →"}
             </button>
+             <button
+  onClick={listening ? stopListening : startListening}
+  style={{
+    width: '100%',
+    marginTop: '8px',
+    padding: '10px',
+    borderRadius: '10px',
+    border: listening ? '2px solid #ef4444' : '2px solid rgba(167,139,250,0.4)',
+    background: listening ? 'rgba(239,68,68,0.15)' : 'rgba(167,139,250,0.1)',
+    color: listening ? '#f87171' : '#c4b5fd',
+    fontWeight: 700,
+    fontSize: '0.88rem',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  }}
+>
+  {listening ? '⏹ Stop Listening' : '🎙️ Start Listening — Auto-fill from call'}
+</button>
           </div>
 
           <div className="card">
@@ -250,11 +366,29 @@ export function SafeCopilot() {
           )}
 
           <div className="card phrase-card-wrap">
-            <div className="rag-pill">✦ Generated using clinical safety protocols (RAG)</div>
             <div className="phrase-label">● RECOMMENDED RESPONSE</div>
             <blockquote className="phrase-quote">
-              "{guidance?.phrase ?? "Enter a situation and click Get Guidance to begin."}"
-            </blockquote>
+  "{guidance?.phrase ?? "Enter a situation and click Get Guidance to begin."}"
+  {guidance?.phrase && (
+    <button
+      onClick={() => speakPhrase(guidance.phrase)}
+      style={{
+        marginLeft: '10px',
+        background: 'rgba(167,139,250,0.2)',
+        border: '1px solid rgba(167,139,250,0.4)',
+        borderRadius: '50%',
+        width: '32px',
+        height: '32px',
+        cursor: 'pointer',
+        fontSize: '16px',
+        verticalAlign: 'middle',
+      }}
+      title="Read aloud"
+    >
+      🔊
+    </button>
+  )}
+</blockquote>
             {guidance && (
               <>
                 <div className="meta-line">
